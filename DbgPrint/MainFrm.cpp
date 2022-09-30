@@ -10,6 +10,7 @@
 #include "SecurityHelper.h"
 #include "AppSettings.h"
 #include "Helpers.h"
+#include <ThemeHelper.h>
 
 BOOL CMainFrame::PreTranslateMessage(MSG* pMsg) {
 	return CFrameWindowImpl<CMainFrame>::PreTranslateMessage(pMsg);
@@ -85,6 +86,7 @@ void CMainFrame::InitToolBar(CToolBarCtrl& tb) const {
 }
 
 LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
+	InitDarkTheme();
 	if (SecurityHelper::IsRunningElevated()) {
 		CMenuHandle menu(GetMenu());
 		menu.GetSubMenu(0).DeleteMenu(0, MF_BYPOSITION);
@@ -118,8 +120,6 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	UISetCheck(ID_VIEW_TOOLBAR, settings.ViewToolBar());
 	UISetCheck(ID_VIEW_STATUS_BAR, settings.ViewStatusBar());
 
-	SetAlwaysOnTop(settings.AlwaysOnTop());
-
 	m_Tabs.m_bTabCloseButton = false;
 	m_hWndClient = m_Tabs.Create(m_hWnd, 0, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
 	m_Tabs.SetWindowMenu(CMenuHandle(GetMenu()).GetSubMenu(7));
@@ -150,10 +150,13 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	view->Create(m_Tabs, 0, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
 	view->SetFont(m_Font);
 	m_pActiveView = view;
+	view->Capture(AppSettings::Get().Capture());
 	m_Tabs.AddPage(view->m_hWnd, L"Real-time Log", 0, view);
 
-	// register object for message filtering and idle updates
-	CMessageLoop* pLoop = _Module.GetMessageLoop();
+	SetAlwaysOnTop(settings.AlwaysOnTop());
+	SetDarkMode(AppSettings::Get().DarkMode());
+
+	auto pLoop = _Module.GetMessageLoop();
 	ATLASSERT(pLoop != NULL);
 	pLoop->AddMessageFilter(this);
 	pLoop->AddIdleHandler(this);
@@ -164,8 +167,7 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 LRESULT CMainFrame::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled) {
 	AppSettings::Get().SaveToKey();
 
-	// unregister message filtering and idle updates
-	CMessageLoop* pLoop = _Module.GetMessageLoop();
+	auto pLoop = _Module.GetMessageLoop();
 	ATLASSERT(pLoop != NULL);
 	pLoop->RemoveMessageFilter(this);
 	pLoop->RemoveIdleHandler(this);
@@ -180,7 +182,7 @@ LRESULT CMainFrame::OnFileExit(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCt
 }
 
 LRESULT CMainFrame::OnViewToolBar(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
-	static BOOL bVisible = TRUE;	// initially visible
+	static bool bVisible = true;	// initially visible
 	bVisible = !bVisible;
 	CReBarCtrl rebar = m_hWndToolBar;
 	int nBandIndex = rebar.IdToIndex(ATL_IDW_BAND_FIRST);	// toolbar is first 1st band
@@ -191,7 +193,7 @@ LRESULT CMainFrame::OnViewToolBar(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWn
 }
 
 LRESULT CMainFrame::OnViewStatusBar(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
-	BOOL bVisible = !::IsWindowVisible(m_hWndStatusBar);
+	auto bVisible = !::IsWindowVisible(m_hWndStatusBar);
 	::ShowWindow(m_hWndStatusBar, bVisible ? SW_SHOWNOACTIVATE : SW_HIDE);
 	UISetCheck(ID_VIEW_STATUS_BAR, bVisible);
 	UpdateLayout();
@@ -276,6 +278,7 @@ void CMainFrame::UpdateUI() {
 	UIEnable(ID_WINDOWS_CLOSEALL, m_Tabs.GetPageCount() > 1);
 	UIEnable(ID_CAPTURE_CAPTUREOUTPUT, active);
 	UIEnable(ID_CAPTURE_CAPTUREUSERMODE, active);
+	UIEnable(ID_SEARCH_FIND, active && m_pActiveView && !m_pActiveView->IsEmpty());
 	if (SecurityHelper::IsRunningElevated()) {
 		UIEnable(ID_CAPTURE_CAPTUREKERNEL, active);
 		UIEnable(ID_CAPTURE_CAPTURESESSION0, active);
@@ -323,6 +326,43 @@ LRESULT CMainFrame::OnTabCloseAll(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWn
 	while (m_Tabs.GetPageCount() > 0)
 		SendMessage(WM_COMMAND, ID_WINDOWS_CLOSE);
 	return 0;
+}
+
+void CMainFrame::InitDarkTheme() {
+	m_DarkTheme.BackColor = m_DarkTheme.SysColors[COLOR_WINDOW] = RGB(32, 32, 32);
+	m_DarkTheme.TextColor = m_DarkTheme.SysColors[COLOR_WINDOWTEXT] = RGB(248, 248, 248);
+	m_DarkTheme.SysColors[COLOR_HIGHLIGHT] = RGB(10, 10, 160);
+	m_DarkTheme.SysColors[COLOR_HIGHLIGHTTEXT] = RGB(240, 240, 240);
+	m_DarkTheme.SysColors[COLOR_MENUTEXT] = m_DarkTheme.TextColor;
+	m_DarkTheme.SysColors[COLOR_CAPTIONTEXT] = m_DarkTheme.TextColor;
+	m_DarkTheme.SysColors[COLOR_BTNFACE] = m_DarkTheme.BackColor;
+	m_DarkTheme.SysColors[COLOR_BTNTEXT] = m_DarkTheme.TextColor;
+	m_DarkTheme.SysColors[COLOR_3DLIGHT] = RGB(192, 192, 192);
+	m_DarkTheme.SysColors[COLOR_BTNHIGHLIGHT] = RGB(192, 192, 192);
+	m_DarkTheme.SysColors[COLOR_CAPTIONTEXT] = m_DarkTheme.TextColor;
+	m_DarkTheme.SysColors[COLOR_3DSHADOW] = m_DarkTheme.TextColor;
+	m_DarkTheme.SysColors[COLOR_SCROLLBAR] = m_DarkTheme.BackColor;
+	m_DarkTheme.Name = L"Dark";
+	m_DarkTheme.Menu.BackColor = m_DarkTheme.BackColor;
+	m_DarkTheme.Menu.TextColor = m_DarkTheme.TextColor;
+	m_DarkTheme.StatusBar.BackColor = m_DarkTheme.BackColor;
+	m_DarkTheme.StatusBar.TextColor = m_DarkTheme.TextColor;
+}
+
+LRESULT CMainFrame::OnDarkMode(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
+	auto dark = !AppSettings::Get().DarkMode();
+	AppSettings::Get().DarkMode(dark);
+	SetDarkMode(dark);
+	return 0;
+}
+
+void CMainFrame::SetDarkMode(bool dark) {
+	ThemeHelper::SetCurrentTheme(dark ? m_DarkTheme : m_DefaultTheme, m_hWnd);
+	ThemeHelper::UpdateMenuColors(*this, dark);
+	UpdateMenu(GetMenu(), true);
+	DrawMenuBar();
+
+	UISetCheck(ID_OPTIONS_DARKMODE, dark);
 }
 
 

@@ -24,8 +24,12 @@ public:
 	bool IsSortable(HWND, int col) const;
 	BOOL OnDoubleClickList(HWND, int row, int col, POINT const& pt);
 	BOOL OnRightClickList(HWND, int row, int col, POINT const&);
+	DWORD OnPrePaint(DWORD, LPNMCUSTOMDRAW cd);
+	DWORD OnItemPrePaint(DWORD, LPNMCUSTOMDRAW cd);
+
 	bool CanClose();
 	bool IsRealTime() const;
+	bool IsEmpty() const;
 
 	int GetRowImage(HWND, int row, int col) const;
 	void DoSort(SortInfo const*);
@@ -52,10 +56,12 @@ protected:
 	ALT_MSG_MAP(1)
 		COMMAND_ID_HANDLER(ID_FILE_SAVEASTEXT, OnSaveAsText)
 		COMMAND_ID_HANDLER(ID_EDIT_COPY, OnEditCopy)
+		COMMAND_ID_HANDLER(ID_SEARCH_FIND, OnSearchFind)
 		COMMAND_ID_HANDLER(ID_VIEW_PROPERTIES, OnProperties)
 		COMMAND_ID_HANDLER(ID_EDIT_DELETE, OnEditDelete)
 		COMMAND_ID_HANDLER(ID_EDIT_COMMENT, OnEditComment)
 		COMMAND_ID_HANDLER(ID_EDIT_CLEAR_ALL, OnEditClearAll)
+		COMMAND_ID_HANDLER(ID_EDIT_BOOKMARK, OnToggleBookmark)
 	END_MSG_MAP()
 
 	enum class ColumnType {
@@ -78,6 +84,8 @@ private:
 	LRESULT OnEditDelete(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnEditComment(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnEditClearAll(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnSearchFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnToggleBookmark(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 
 	CListViewCtrl m_List;
 	std::vector<std::shared_ptr<DebugItem>> m_Items, m_TempItems;
@@ -88,7 +96,7 @@ private:
 	inline static ULONG s_Index;
 	CUpdateUIBase* m_ui{ nullptr };
 	IMainFrame* m_pFrame;
-	bool m_Running{ false };
+	std::atomic<bool> m_Running{ false };
 	bool m_RealTime;
 };
 

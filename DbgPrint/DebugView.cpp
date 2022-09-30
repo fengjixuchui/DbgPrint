@@ -11,6 +11,7 @@
 #include "PropertiesDlg.h"
 #include "CommentDlg.h"
 #include <ThemeHelper.h>
+#include "resource.h"
 
 CDebugView::CDebugView(IMainFrame* frame, bool realTime) : m_pFrame(frame), m_RealTime(realTime) {
 }
@@ -45,17 +46,6 @@ LRESULT CDebugView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
 	SetTimer(1, 1000);
 
-	auto& settings = AppSettings::Get();
-	if (settings.Capture()) {
-		if (settings.CaptureUserMode())
-			m_UserMode.Run(this);
-		if (SecurityHelper::IsRunningElevated()) {
-			if (settings.CaptureSession0())
-				m_UserModeSession0.Run(this);
-			if (settings.CaptureKernel())
-				m_KernelMode.Run(this);
-		}
-	}
 	return 0;
 }
 
@@ -157,6 +147,23 @@ BOOL CDebugView::OnRightClickList(HWND, int row, int col, POINT const& pt) {
 	return m_pFrame->TrackPopupMenu(menu.GetSubMenu(0), 0, pt.x, pt.y);
 }
 
+DWORD CDebugView::OnPrePaint(DWORD, LPNMCUSTOMDRAW cd) {
+	if (cd->hdr.hwndFrom == m_List)
+		return CDRF_NOTIFYITEMDRAW;
+
+	SetMsgHandled(FALSE);
+	return 0;
+}
+
+DWORD CDebugView::OnItemPrePaint(DWORD, LPNMCUSTOMDRAW cd) {
+	auto lvcd = (NMLVCUSTOMDRAW*)cd;
+	auto& item = m_Items[(int)cd->dwItemSpec];
+	if ((item->Flags & DebugOutputFlags::Highlight) == DebugOutputFlags::Highlight) {
+
+	}
+	return CDRF_SKIPPOSTPAINT;
+}
+
 bool CDebugView::CanClose() {
 	return !m_RealTime;
 }
@@ -165,7 +172,14 @@ bool CDebugView::IsRealTime() const {
 	return m_RealTime;
 }
 
+bool CDebugView::IsEmpty() const {
+	return m_Items.empty();
+}
+
 void CDebugView::DebugOutput(DWORD pid, PCSTR text, FILETIME const& time, DebugOutputFlags flags) {
+	if (!m_Running)
+		return;
+
 	auto const& pm = ProcessManager::Get();
 	auto item = std::make_unique<DebugItem>();
 	item->ProcessName = pm.GetProcessName(pid);
@@ -202,6 +216,7 @@ void CDebugView::DoSort(SortInfo const* si) {
 }
 
 void CDebugView::Capture(bool capture) {
+	m_Running = capture;
 	if (capture) {
 		auto const& settings = AppSettings::Get();
 		if (settings.CaptureUserMode())
@@ -216,7 +231,6 @@ void CDebugView::Capture(bool capture) {
 		m_UserModeSession0.Stop();
 		m_KernelMode.Stop();
 	}
-	m_Running = capture;
 }
 
 void CDebugView::CaptureKernel(bool capture) {
@@ -246,6 +260,7 @@ void CDebugView::UpdateUI(CUpdateUIBase* ui) {
 	ui->UIEnable(ID_EDIT_DELETE, selectedCount > 0);
 	ui->UIEnable(ID_EDIT_COPY, selectedCount > 0);
 	ui->UIEnable(ID_EDIT_COMMENT, selectedCount == 1);
+	ui->UIEnable(ID_EDIT_BOOKMARK, selectedCount > 0);
 }
 
 int CDebugView::GetRowImage(HWND h, int row, int col) const {
@@ -254,12 +269,19 @@ int CDebugView::GetRowImage(HWND h, int row, int col) const {
 		return ((item->Flags & DebugOutputFlags::Kernel) == DebugOutputFlags::Kernel) ? 1 : 2;
 
 	auto type = GetColumnManager(h)->GetColumnTag<ColumnType>(col);
-	if (type != ColumnType::ProcessName)
-		return -1;
+	switch (type) {
+		case ColumnType::ProcessName:
+			if (item->Image >= 0)
+				return item->Image;
+			return item->Process.ProcessId ? 0 : 1;
 
-	if (item->Image >= 0)
-		return item->Image;
-	return item->Process.ProcessId ? 0 : 1;
+		case ColumnType::Text:
+			auto bookmark = (item->Flags & DebugOutputFlags::Highlight) == DebugOutputFlags::Highlight;
+			if (bookmark)
+				return 3;
+			break;
+	}
+	return -1;
 }
 
 LRESULT CDebugView::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& handled) {
@@ -368,6 +390,22 @@ LRESULT CDebugView::OnEditClearAll(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hW
 		m_Items.clear();
 	}
 	m_List.SetItemCount(0);
+	return 0;
+}
+
+LRESULT CDebugView::OnSearchFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
+	return 0;
+}
+
+LRESULT CDebugView::OnToggleBookmark(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
+	int count = m_List.GetSelectedCount();
+	ATLASSERT(count);
+
+	for (auto i : SelectedItemsView(m_List)) {
+		auto& item = m_Items[i];
+		item->Flags ^= DebugOutputFlags::Highlight;
+	}
+	m_List.RedrawItems(m_List.GetTopIndex(), m_List.GetTopIndex() + m_List.GetCountPerPage());
 	return 0;
 }
 
